@@ -1,0 +1,173 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model BugReport {
+  id               String   @id @default(cuid())
+  title            String
+  description      String // markdown content (sc md)
+  stepsToReproduce String?
+  product          String   @default("jpm") // jpm | md — which product/script this bug is for
+  severity         String   @default("medium") // low | medium | high | critical
+  category        String   @default("other") // ui | backend | security | performance | network | other
+  status           String   @default("open") // open | in_progress | resolved | closed
+  triaged          Boolean  @default(false) // set true when an admin first edits/triages
+  pinned           Boolean  @default(false) // admin can pin important reports
+  upvotes          Int      @default(0)
+  views            Int      @default(0)
+  resolvedAt       DateTime? // set when status moves to resolved/closed (for time-to-resolve)
+  // JSON-encoded string array of uploaded image URLs (screenshot gambar)
+  screenshots      String?
+  reporterName     String
+  reporterEmail    String?
+  environment      String?
+  adminNotes       String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  comments Comment[]
+  replies  Reply[]
+
+  @@index([status])
+  @@index([severity])
+  @@index([category])
+  @@index([product])
+  @@index([triaged])
+  @@index([pinned])
+  @@index([createdAt])
+  @@index([upvotes])
+}
+
+model Comment {
+  id        String   @id @default(cuid())
+  reportId  String
+  report    BugReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  author    String
+  content   String // markdown
+  createdAt DateTime @default(now())
+
+  @@index([reportId])
+  @@index([createdAt])
+}
+
+model Reply {
+  // Admin reply to the reporter — PUBLIC (visible in the report detail).
+  id        String   @id @default(cuid())
+  reportId  String
+  report    BugReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  author    String   @default("admin")
+  content   String // markdown
+  createdAt DateTime @default(now())
+
+  @@index([reportId])
+  @@index([createdAt])
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  actor     String   @default("admin")
+  action    String // login_success | login_fail | logout | update | delete | session_expired | reply
+  target    String?
+  detail    String?
+  ip        String?
+  createdAt DateTime @default(now())
+
+  @@index([action])
+  @@index([createdAt])
+}
+
+model Announcement {
+  // Admin forum post — shown to everyone as a pinned banner + list.
+  id        String   @id @default(cuid())
+  title     String
+  content   String // markdown
+  pinned    Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([pinned])
+  @@index([createdAt])
+}
+
+model FeatureRequest {
+  // User-submitted feature requests (like a mini roadmap).
+  id          String   @id @default(cuid())
+  title       String
+  description String // markdown
+  product     String   @default("jpm") // jpm | md
+  status      String   @default("idea") // idea | planned | in_progress | done | declined
+  upvotes     Int      @default(0)
+  requesterName String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([status])
+  @@index([product])
+  @@index([createdAt])
+  @@index([upvotes])
+}
+
+model ChatMessage {
+  // Public chat room — WhatsApp group style. Rate-limited 5 msgs / 5 min per IP.
+  id        String   @id @default(cuid())
+  author    String
+  content   String
+  images    String?  // JSON array of image URLs (max 4)
+  replyTo   String?  // ID of message being replied to (null if top-level)
+  ip        String?
+  createdAt DateTime @default(now())
+
+  reactions ChatReaction[]
+
+  @@index([createdAt])
+  @@index([replyTo])
+}
+
+model ChatReaction {
+  // Emoji reaction on a chat message (like WhatsApp).
+  id        String   @id @default(cuid())
+  messageId String
+  message   ChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  emoji     String
+  author    String
+  createdAt DateTime @default(now())
+
+  @@unique([messageId, author, emoji])
+  @@index([messageId])
+}
+
+model User {
+  // Simple email + password auth (no OAuth). Password stored as hash.
+  id            String    @id @default(cuid())
+  email         String    @unique
+  passwordHash  String
+  name          String
+  avatarUrl     String?
+  registerIp    String?   // IP saat register (for 1-IP-1-account limit)
+  createdAt     DateTime  @default(now())
+
+  sessions      Session[]
+
+  @@index([registerIp])
+}
+
+model Session {
+  // Session token stored as cookie. Hashed for security.
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+
+  @@index([userId])
+  @@index([token])
+}
